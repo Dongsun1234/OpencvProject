@@ -1,0 +1,89 @@
+﻿@page "/Blurkernel"
+@rendermode InteractiveServer
+
+<PageTitle>Blurkernel</PageTitle>
+
+@using OpenCvSharp;
+@inject IJSRuntime jsRuntime;
+@inject HttpClient httpClient;
+
+<div>
+    <canvas @ref="srcCanvas" width="657" height="368" style="border:1px solid gray;">
+    </canvas>
+    <canvas @ref="dstCanvas" width="657" height="368" style="border:1px solid gray;">
+    </canvas>
+</div>
+
+
+<select @bind="morph_Val"
+        @bind:after="BlurKernel">
+    <option value="0">Kernel_Rect</option>
+    <option value="1">Kernal_Cross</option>
+    <option value="2">Kernal_Ellipse</option>
+    <option value="3">Blur</option>
+</select>
+
+<p>BlockSize: @blockSize </p>
+    <div class="slidecontainer">
+        <input type="range" min="3" max="20" step="2" class="slider" style="top:-40px; left:100px;"
+           @bind="blockSize" @bind:event="oninput" @bind:after="BlurKernel" />    
+    </div>
+
+@code {
+    private Mat? srcMat;
+    private int morph_Val = 0;
+    private int blockSize = 3;
+    private ElementReference srcCanvas;
+    private ElementReference dstCanvas;
+    private CanvasClient? srcCanvasClient;
+    private CanvasClient? dstCanvasClient;
+
+
+     public void Dispose()
+    {
+        srcMat?.Dispose();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await base.OnAfterRenderAsync(firstRender);
+
+        var imageBytes = await httpClient.GetByteArrayAsync("images/free.jpg");
+        srcMat ??= Mat.FromImageData(imageBytes);
+
+        srcCanvasClient ??= new CanvasClient(jsRuntime, srcCanvas);
+        dstCanvasClient ??= new CanvasClient(jsRuntime, dstCanvas);
+
+        await srcCanvasClient.DrawMatAsync(srcMat);
+    }
+
+    private async Task BlurKernel()
+    {
+        if (srcMat is null)
+            throw new InvalidOperationException($"{nameof(srcMat)} is null");
+        if (dstCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(dstCanvasClient)} is null");
+
+        using var dstMat = new Mat();
+
+        switch(morph_Val)
+        {
+            case 0:
+                Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Rect, new Size(blockSize, blockSize))); //MorphShapes.Rect
+                break;
+            case 1:
+                Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Cross, new Size(blockSize, blockSize))); //MorphShapes.Rect
+                break;
+           case 2:
+                Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(blockSize, blockSize))); //MorphShapes.Rect
+                break;
+            case 3:
+                Cv2.Blur(srcMat, dstMat, new Size(blockSize, blockSize));
+                break;
+        }
+        await dstCanvasClient.DrawMatAsync(dstMat);
+    }
+}

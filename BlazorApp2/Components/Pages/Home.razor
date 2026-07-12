@@ -1,0 +1,130 @@
+﻿@page "/"
+
+@rendermode InteractiveServer
+
+@using OpenCvSharp;
+@inject IJSRuntime jsRuntime;
+@inject HttpClient httpClient;
+@implements IDisposable
+
+<PageTitle>Home</PageTitle>
+
+@* <label>Adaptive Mean: 임계값 적용 X, Adaptive Gaussian: 최대값, 임계값 적용 X </label> *@
+
+<div>
+    <canvas @ref="srcCanvas" width="580" height="870" style="border:1px solid gray;">
+    </canvas>
+    <canvas @ref="dstCanvas" width="580" height="870" style="border:1px solid gray;">
+    </canvas>
+</div>
+
+<select @bind="selectedThresholdType"
+        @bind:after="Threshold">
+    <option value="0">Binary</option>
+    <option value="1">BinaryInv</option>
+    <option value="2">Trunc</option>
+    <option value="3">ToZero</option>
+    <option value="4">ToZeroInv</option>
+    <option value="8">Ostu</option>
+    <option value="10">Adaptive Mean</option>
+    <option value="20">Adaptive Gaussian</option>
+</select>
+
+<p class="txt_thres">Threshold:@thresholdValue </p>
+<div class="slidecontainer">
+    <input type="range" min="0" max="255" step="1" class="slider" style="top:-20px; left:110px;"
+        @bind="thresholdValue" @bind:event="oninput" @bind:after="Threshold" />
+</div>
+
+<p class="txt_maxVal">maxValue:@maxValue </p>
+    <div class="slidecontainer">
+        <input type="range" min="0" max="255" step="1" class="slider" style="top:-86px; left:505px;"
+           @bind="maxValue" @bind:event="oninput" @bind:after="Threshold" />    
+    </div>
+
+<p class="txt_block">BlockSize:@blockSize </p>
+    <div class="slidecontainer">
+        <input type="range" min="3" max="20" step="2" class="slider" style="top:-100px; left:111px;"
+           @bind="blockSize" @bind:event="oninput" @bind:after="Threshold" />    
+    </div>
+
+
+<p class="txt_factor">Factor:@correctionFactor </p>
+    <div class="slidecontainer">
+        <input type="range" min="0" max="20" class="slider" style="top:-167px; left:507px;"
+           @bind="correctionFactor" @bind:event="oninput" @bind:after="Threshold" />    
+    </div>
+
+@code {
+    private Mat? srcMat;
+    private int thresholdValue = 0;
+    private int maxValue = 0;
+    private int blockSize = 3;
+    private int correctionFactor = 0;
+    private int selectedThresholdType = 0;
+    private ElementReference srcCanvas;
+    private ElementReference dstCanvas;
+    private CanvasClient? srcCanvasClient;
+    private CanvasClient? dstCanvasClient;
+
+    public void Dispose()
+    {
+        srcMat?.Dispose();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await base.OnAfterRenderAsync(firstRender);
+
+        var imageBytes = await httpClient.GetByteArrayAsync("images/karina.jpg");
+        srcMat ??= Mat.FromImageData(imageBytes);
+
+        srcCanvasClient ??= new CanvasClient(jsRuntime, srcCanvas);
+        dstCanvasClient ??= new CanvasClient(jsRuntime, dstCanvas);
+
+        await srcCanvasClient.DrawMatAsync(srcMat);
+    }
+
+    private async Task Grayscale()
+    {
+        if (srcMat is null)
+            throw new InvalidOperationException($"{nameof(srcMat)} is null");
+        if (dstCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(dstCanvasClient)} is null");
+
+        using var grayMat = new Mat();
+        Cv2.CvtColor(srcMat, grayMat, ColorConversionCodes.BGR2GRAY);
+
+        await dstCanvasClient.DrawMatAsync(grayMat);
+    }
+
+    private async Task Threshold()
+    {
+        if (srcMat is null)
+            throw new InvalidOperationException($"{nameof(srcMat)} is null");
+        if (dstCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(dstCanvasClient)} is null");
+
+        using var grayMat = new Mat();
+        using var dstMat = new Mat();
+        Cv2.CvtColor(srcMat, grayMat, ColorConversionCodes.BGR2GRAY);
+
+        switch (selectedThresholdType / 10)
+        {
+            case 0:
+                Cv2.Threshold(grayMat, dstMat, thresholdValue, maxValue, (ThresholdTypes)selectedThresholdType);
+                break;
+            case 1:
+                Cv2.AdaptiveThreshold(grayMat, dstMat, maxValue, AdaptiveThresholdTypes.MeanC, ThresholdTypes.Binary, blockSize, correctionFactor); // 11, 2                
+                break;
+            case 2:
+                Cv2.AdaptiveThreshold(grayMat, dstMat, maxValue, AdaptiveThresholdTypes.GaussianC, ThresholdTypes.Binary, blockSize, correctionFactor); // 11, 2
+                //Cv2.GaussianBlur(grayMat, dstMat, new Size(3, 3), 0);
+                break;
+        }
+        await dstCanvasClient.DrawMatAsync(dstMat);
+    }
+}
