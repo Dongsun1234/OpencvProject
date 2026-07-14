@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
-using System;
 using System.Runtime.InteropServices;
 using OpenCvSharp;
 

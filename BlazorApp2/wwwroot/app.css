@@ -121,3 +121,40 @@ Firefox 브라우저를 위해서는 -moz- 를 사용하세요 */
     top: -125px;
     left: 400px;
 }
+
+.txt_start_y {
+    position: relative;
+    top: -46px;
+    left: 350px;
+}
+
+.txt_start_y1 {
+    position: relative;
+}
+
+.txt_end_x {
+    position: relative;
+    top: -50px;
+}
+.txt_end_x1 {
+    position: relative;
+}
+
+.txt_end_y {
+    position: relative;
+    top: -98px;
+    left: 350px;
+}
+
+.txt_end_y1 {
+    position: relative;
+}
+
+.txt_cal {
+    position: relative;
+    top: -100px;
+}
+
+.txt_cal1 {
+    position: relative;
+}

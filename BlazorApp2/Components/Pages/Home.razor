@@ -12,9 +12,9 @@
 @* <label>Adaptive Mean: 임계값 적용 X, Adaptive Gaussian: 최대값, 임계값 적용 X </label> *@
 
 <div>
-    <canvas @ref="srcCanvas" width="580" height="870" style="border:1px solid gray;">
+    <canvas @ref="srcCanvas" width="832" height="555" style="border:1px solid gray;">
     </canvas>
-    <canvas @ref="dstCanvas" width="580" height="870" style="border:1px solid gray;">
+    <canvas @ref="dstCanvas" width="832" height="555" style="border:1px solid gray;">
     </canvas>
 </div>
 
@@ -33,7 +33,7 @@
 <p class="txt_thres">Threshold:@thresholdValue </p>
 <div class="slidecontainer">
     <input type="range" min="0" max="255" step="1" class="slider" style="top:-20px; left:110px;"
-        @bind="thresholdValue" @bind:event="oninput" @bind:after="Threshold" />
+           @bind="thresholdValue" @bind:event="oninput" @bind:after="Threshold" />
 </div>
 
 <p class="txt_maxVal">maxValue:@maxValue </p>
@@ -79,7 +79,7 @@
 
         await base.OnAfterRenderAsync(firstRender);
 
-        var imageBytes = await httpClient.GetByteArrayAsync("images/karina.jpg");
+        var imageBytes = await httpClient.GetByteArrayAsync("images/stadium.jpg");
         srcMat ??= Mat.FromImageData(imageBytes);
 
         srcCanvasClient ??= new CanvasClient(jsRuntime, srcCanvas);

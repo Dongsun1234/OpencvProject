@@ -1,0 +1,105 @@
+﻿@page "/CaliperLineFitting"
+@rendermode InteractiveServer
+
+@using OpenCvSharp;
+@inject IJSRuntime jsRuntime;
+@inject HttpClient httpClient;
+
+<div>
+    <canvas @ref="srcCanvas" width="832" height="555" style="border:1px solid gray;">
+    </canvas>
+    <canvas @ref="dstCanvas" width="832" height="555" style="border:1px solid gray;">
+    </canvas>
+</div>
+
+<p>시작 X좌표 : <input type="text" name="id" @bind="start_x" @bind:event="oninput" /></p>
+<p class="txt_start_y">시작 Y좌표 : <input type="text" name="id" class="txt_start_y1" @bind="start_y" @bind:event="oninput" /></p>
+<p class="txt_end_x">종료 X좌표 : <input type="text" name="id" class="txt_end_x1" @bind="end_x" @bind:event="oninput" /></p>
+<p class="txt_end_y">종료 Y좌표 : <input type="text" name="id" class="txt_end_y1" @bind="end_y" @bind:event="oninput" /></p>
+
+<p class="txt_cal">캘리퍼 엣지 개수: @caliperCount </p>
+<div class="slidecontainer">
+    <input type="range" min="2" max="100" step="1" class="slider" style="top:-140px; left:145px;"
+           @bind="caliperCount" @bind:event="oninput" @bind:after="CaliperLineFits" />
+</div>
+
+@code {
+    private ElementReference srcCanvas;
+    private ElementReference dstCanvas;
+    private CanvasClient? srcCanvasClient;
+    private CanvasClient? dstCanvasClient;
+    private Mat? srcMat;
+    private int start_x = 0;
+    private int start_y = 0;
+    private int end_x = 0;
+    private int end_y = 0;
+    private int caliperCount = 2;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await base.OnAfterRenderAsync(firstRender);
+
+        var imageBytes = await httpClient.GetByteArrayAsync("images/stadium.jpg");
+        srcMat ??= Mat.FromImageData(imageBytes);
+
+        srcCanvasClient ??= new CanvasClient(jsRuntime, srcCanvas);
+        dstCanvasClient ??= new CanvasClient(jsRuntime, dstCanvas);
+
+        await srcCanvasClient.DrawMatAsync(srcMat);
+    }
+
+    //1.가우시안 블러 적용
+    private async Task CaliperLineFits()
+    {
+        if (srcMat is null)
+            throw new InvalidOperationException($"{nameof(srcMat)} is null");
+        if (dstCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(dstCanvasClient)} is null");
+
+        using var grayMat = new Mat();
+        using var dstMat = new Mat();
+        Cv2.CvtColor(srcMat, grayMat, ColorConversionCodes.BGR2GRAY);
+
+        Point2f start = new Point2f(start_x, start_y); // 200, 300
+		Point2f end = new Point2f(end_x, end_y); // 500, 220
+
+
+        var edgePoints = BlazorApp2.CaliperLineFitting.FindEdgePoints(
+            grayMat,
+            start,
+            end,
+            caliperCount,
+            searchRadius: 10,
+            caliperHalfWidth: 5,
+            minGradient: 8);
+
+        var fittedLine = BlazorApp2.CaliperLineFitting.FitLinePca(edgePoints);
+
+        //Cv2.CvtColor(grayMat, dstMat, ColorConversionCodes.GRAY2BGR);
+		srcMat.CopyTo(dstMat);
+        foreach (var p in edgePoints)
+        {
+            Cv2.Circle(dstMat, (Point)p, 4, Scalar.Red, -2);
+        }
+
+        var p0 = fittedLine.Point;
+        var dir = fittedLine.Direction;
+
+        float len = Math.Max(dstMat.Width, dstMat.Height);
+        Point pt1 = new Point(
+            (int)(p0.X - dir.X * len),
+            (int)(p0.Y - dir.Y * len));
+
+        Point pt2 = new Point(
+            (int)(p0.X + dir.X * len),
+            (int)(p0.Y + dir.Y * len));
+
+        Cv2.Line(dstMat, pt1, pt2, Scalar.Lime, 2);
+
+        await dstCanvasClient.DrawMatAsync(dstMat);
+    }
+
+}
