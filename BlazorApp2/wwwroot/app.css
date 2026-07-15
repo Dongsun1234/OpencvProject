@@ -152,9 +152,20 @@ Firefox 브라우저를 위해서는 -moz- 를 사용하세요 */
 
 .txt_cal {
     position: relative;
-    top: -100px;
+    top: -95px;
 }
 
-.txt_cal1 {
+.txt_scan {
     position: relative;
+    top: -120px;
+}
+
+.txt_cal_option {
+    position: relative;
+    top: -102px;
+}
+
+.txt_position {
+    position: relative;
+    top: -140px;
 }

@@ -2,9 +2,9 @@
 
 namespace BlazorApp2
 {
-    public class CaliperLineFitting
+    public class LineFit
     {
-        public static List<Point2f> FindEdgePoints(
+        public List<Point2f> FindEdgePoints(
         Mat gray,
         Point2f lineStart,
         Point2f lineEnd,
@@ -70,11 +70,8 @@ namespace BlazorApp2
             return edgePoints;
         }
 
-        public static (Point2f Point, Point2f Direction) FitLinePca(List<Point2f> points)
+        public (Point2f Point, Point2f Direction) FitLinePca(List<Point2f> points)
         {
-            if (points.Count < 2)
-                throw new InvalidOperationException("라인 피팅에는 최소 2개 이상의 점이 필요합니다.");
-
             double meanX = points.Average(p => p.X);
             double meanY = points.Average(p => p.Y);
 
@@ -101,7 +98,7 @@ namespace BlazorApp2
             return (new Point2f((float)meanX, (float)meanY), direction);
         }
 
-        private static double SampleBilinear(Mat gray, double x, double y)
+        private double SampleBilinear(Mat gray, double x, double y)
         {
             x = Math.Clamp(x, 0, gray.Width - 1);
             y = Math.Clamp(y, 0, gray.Height - 1);
@@ -126,7 +123,7 @@ namespace BlazorApp2
                 v11 * dx * dy;
         }
 
-        private static Point2f Normalize(Point2f v)
+        private Point2f Normalize(Point2f v)
         {
             float length = MathF.Sqrt(v.X * v.X + v.Y * v.Y);
             return new Point2f(v.X / length, v.Y / length);

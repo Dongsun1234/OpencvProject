@@ -14,14 +14,24 @@
     </canvas>
 </div>
 
+<p> 모폴로지 형태:
+    <select @bind="morph_Val"
+            @bind:after="BlurKernel">
+        <option value="0">Kernel_Rect</option>
+        <option value="1">Kernal_Cross</option>
+        <option value="2">Kernal_Ellipse</option>
+        <option value="3">Blur</option>
+    </select>
+</p>
 
-<select @bind="morph_Val"
-        @bind:after="BlurKernel">
-    <option value="0">Kernel_Rect</option>
-    <option value="1">Kernal_Cross</option>
-    <option value="2">Kernal_Ellipse</option>
-    <option value="3">Blur</option>
-</select>
+<p>
+    모폴로지 연산:
+    <select @bind="cal_Val"
+            @bind:after="BlurKernel">
+        <option value="0">dilation</option>
+        <option value="1">erosion</option>
+    </select>
+</p>
 
 <p>BlockSize: @blockSize </p>
     <div class="slidecontainer">
@@ -32,6 +42,7 @@
 @code {
     private Mat? srcMat;
     private int morph_Val = 0;
+    private int cal_Val = 0;
     private int blockSize = 3;
     private ElementReference srcCanvas;
     private ElementReference dstCanvas;
@@ -39,7 +50,7 @@
     private CanvasClient? dstCanvasClient;
 
 
-     public void Dispose()
+    public void Dispose()
     {
         srcMat?.Dispose();
     }
@@ -69,20 +80,40 @@
 
         using var dstMat = new Mat();
 
-        switch(morph_Val)
+        if (morph_Val == 3) //블러인 경우 연산 타입 상관없이 출력
+            Cv2.Blur(srcMat, dstMat, new Size(blockSize, blockSize));
+        else
         {
-            case 0:
-                Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Rect, new Size(blockSize, blockSize))); //MorphShapes.Rect
-                break;
-            case 1:
-                Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Cross, new Size(blockSize, blockSize))); //MorphShapes.Rect
-                break;
-           case 2:
-                Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(blockSize, blockSize))); //MorphShapes.Rect
-                break;
-            case 3:
-                Cv2.Blur(srcMat, dstMat, new Size(blockSize, blockSize));
-                break;
+            if (cal_Val == 0)
+            {
+                switch (morph_Val)
+                {
+                    case 0:
+                        Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Rect, new Size(blockSize, blockSize)));
+                        break;
+                    case 1:
+                        Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Cross, new Size(blockSize, blockSize)));
+                        break;
+                    case 2:
+                        Cv2.Dilate(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(blockSize, blockSize)));
+                        break;
+                }
+            }
+            else
+            {
+                switch (morph_Val)
+                {
+                    case 0:
+                        Cv2.Erode(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Rect, new Size(blockSize, blockSize)));
+                        break;
+                    case 1:
+                        Cv2.Erode(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Cross, new Size(blockSize, blockSize)));
+                        break;
+                    case 2:
+                        Cv2.Erode(srcMat, dstMat, Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(blockSize, blockSize)));
+                        break;
+                }
+            }
         }
         await dstCanvasClient.DrawMatAsync(dstMat);
     }

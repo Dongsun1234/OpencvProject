@@ -1,0 +1,208 @@
+﻿@page "/Caliper"
+@rendermode InteractiveServer
+
+@using OpenCvSharp;
+@inject IJSRuntime jsRuntime;
+@inject HttpClient httpClient;
+
+<div>
+    <canvas @ref="srcCanvas" width="970" height="582" style="border:1px solid gray;">
+    </canvas>
+    <canvas @ref="dstCanvas" width="970" height="582" style="border:1px solid gray;">
+    </canvas>
+    <canvas @ref="roiCanvas" width="@nWidth" height="@nHeight" style="border:1px solid gray;">
+    </canvas>
+</div>
+
+<p>X좌표 : <input type="text" name="id" @bind="point_x" /></p>
+<p class="txt_start_y">Y좌표 : <input type="text" name="id" class="txt_start_y1" @bind="point_y"/></p>
+<p class="txt_end_x">너비 : <input type="text" name="id" class="txt_end_x1" @bind="nWidth"/></p>
+<p class="txt_end_y">높이 : <input type="text" name="id" class="txt_end_y1" @bind="nHeight" @bind:after="Caliper_Roi" /></p>
+
+<select class="txt_cal_option"
+    @bind="scan_dir"
+    @bind:after="EdgeDetection">
+    <option value="0">스캔 방향</option>
+    <option value="1">가로</option>
+    <option value="2">세로</option>
+</select>
+
+<p class="txt_cal">캘리퍼 엣지 개수: @dotCount </p>
+<div class="slidecontainer">
+    <input type="range" min="2" max="100" step="1" class="slider" style="top:-135px; left:145px;"
+           @bind="dotCount" @bind:event="oninput" @bind:after="EdgeDetection" />
+</div>
+
+<p class="txt_scan">스캔 픽셀 범위: @scan_range </p>
+<div class="slidecontainer">
+    <input type="range" min="10" max="100" step="5" class="slider" style="top:-160px; left:145px;"
+           @bind="scan_range" @bind:event="oninput" @bind:after="EdgeDetection" />
+</div>
+
+<p class="txt_position">
+    좌표 데이터:
+    @(edgePoints is null || edgePoints.Count == 0
+        ? "없음"
+        : string.Join(", ", edgePoints.Select(p => $"({(int)p.X}, {(int)p.Y})")))
+</p>
+
+@code {
+    private Mat? srcMat;
+    private Mat? roiMat;
+    private ElementReference srcCanvas;
+    private ElementReference roiCanvas;
+    private ElementReference dstCanvas;
+    private CanvasClient? srcCanvasClient;
+    private CanvasClient? roiCanvasClient;
+    private CanvasClient? dstCanvasClient;
+    private int point_x = 0;
+    private int point_y = 0;
+    private int nWidth = 0;
+    private int nHeight = 0;
+    private LineFit? cLineFit;
+    private int dotCount = 10;
+    private int scan_dir = 0;
+    private int scan_range = 10;
+    private List<Point2f>? edgePoints;
+    
+    public void Dispose()
+    {
+        srcMat?.Dispose();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await base.OnAfterRenderAsync(firstRender);
+
+        var imageBytes = await httpClient.GetByteArrayAsync("images/people.jpg");
+        srcMat ??= Mat.FromImageData(imageBytes);
+
+        srcCanvasClient ??= new CanvasClient(jsRuntime, srcCanvas);
+        dstCanvasClient ??= new CanvasClient(jsRuntime, dstCanvas);
+        roiCanvasClient ??= new CanvasClient(jsRuntime, roiCanvas);
+
+        // MouseCallback mouseCallback = (eventType, x, y, flags, userData) =>
+        // {
+        //     if (eventType == MouseEventTypes.LButtonDown)
+        //     {
+        //         Console.WriteLine($"Mouse clicked at ({x}, {y})");
+        //         dstMat.Rectangle(new Rect(x, y, 100, 100), Scalar.Red, 2);
+        //     }
+
+        // };
+
+        await srcCanvasClient.DrawMatAsync(srcMat);
+    }
+
+    private async Task Caliper_Roi()
+    {
+        if (srcMat is null)
+            throw new InvalidOperationException($"{nameof(srcMat)} is null");
+        if (srcCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(srcCanvasClient)} is null");
+        if (roiCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(roiCanvasClient)} is null");
+        if (dstCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(dstCanvasClient)} is null");
+
+        int x = point_x + nWidth;
+        int y = point_y + nHeight;
+		int max_width = srcMat.Width -1;
+		int max_height = srcMat.Height - 1;
+        x = Math.Clamp(x, 0, max_width); // 좌표 범위 넘어간 순간 min, max로 설정
+        y = Math.Clamp(y, 0, max_height);
+
+        using var dstMat = new Mat();
+        srcMat.CopyTo(dstMat);
+        dstMat.Rectangle(new Rect(point_x, point_y, nWidth, nHeight), Scalar.Red, 2);
+
+        if (x == max_width && y == max_height) //x, y 좌표가 최대인 경우
+        {
+            nWidth = x - point_x;
+            nHeight = y - point_y;
+        }
+        else if (x == max_width)
+            nWidth = x - point_x;
+        else if (y == max_height)
+            nHeight = y - point_y;
+
+        dstMat.Rectangle(new Rect(point_x, point_y, nWidth, nHeight), Scalar.Red, 2);
+        roiMat = dstMat.SubMat(new Rect(point_x, point_y, nWidth, nHeight));
+
+        await srcCanvasClient.DrawMatAsync(srcMat);
+        await dstCanvasClient.DrawMatAsync(dstMat);
+        await roiCanvasClient.DrawMatAsync(roiMat);
+
+        await EdgeDetection();
+    }
+
+
+    private async Task EdgeDetection()
+    {
+        if (srcMat is null)
+            throw new InvalidOperationException($"{nameof(srcMat)} is null");
+        if (roiMat is null)
+            throw new InvalidOperationException($"{nameof(roiMat)} is null");
+        if (roiCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(roiCanvasClient)} is null");
+
+        cLineFit ??= new LineFit();
+        using var grayMat = new Mat();
+        using var dstMat = new Mat();
+        Cv2.CvtColor(roiMat, grayMat, ColorConversionCodes.BGR2GRAY);
+
+        roiMat.CopyTo(dstMat);
+        edgePoints = new List<Point2f>();
+
+        if (scan_dir == 1)
+        {
+            for (int i = scan_range; i < roiMat.Height; i += scan_range) //가로 방향 스캔
+            {
+                Point2f start = new Point2f(1, i);
+                Point2f end = new Point2f(roiMat.Width - 1, i);
+
+                var edgePoint = cLineFit.FindEdgePoints(
+                grayMat,
+                start,
+                end,
+                dotCount,
+                searchRadius: 5,
+                caliperHalfWidth: 5,
+                minGradient: 3);
+
+                edgePoints.AddRange(edgePoint);
+            }
+        }
+        else if (scan_dir == 2)
+        {
+            for (int i = scan_range; i < roiMat.Width; i += scan_range) //세로 방향 스캔
+            {
+                Point2f start = new Point2f(i, 1);
+                Point2f end = new Point2f(i, roiMat.Height - 1);
+
+                var edgePoint = cLineFit.FindEdgePoints(
+                grayMat,
+                start,
+                end,
+                dotCount,
+                searchRadius: 5,
+                caliperHalfWidth: 5,
+                minGradient: 3);
+
+                edgePoints.AddRange(edgePoint);
+            }
+        }
+        else
+            return; //방향 선택
+
+        foreach (var p in edgePoints)
+        {
+            Cv2.Circle(dstMat, (Point)p, 4, Scalar.Green, -2);
+        }
+        await roiCanvasClient.DrawMatAsync(dstMat);
+
+    }
+}

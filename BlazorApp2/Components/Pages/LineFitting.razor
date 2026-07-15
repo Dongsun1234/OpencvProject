@@ -1,0 +1,136 @@
+﻿@page "/LineFitting"
+@rendermode InteractiveServer
+
+@using OpenCvSharp;
+@inject IJSRuntime jsRuntime;
+@inject HttpClient httpClient;
+
+<div>
+    <canvas @ref="srcCanvas" width="832" height="555" style="border:1px solid gray;">
+    </canvas>
+    <canvas @ref="dstCanvas" width="832" height="555" style="border:1px solid gray;">
+    </canvas>
+</div>
+
+<p>라인 검출 개수 : <input type="text" name="id" @bind="lineCount" @bind:event="oninput" @bind:after="LineFits" /></p>
+
+<p>캘리퍼 엣지 개수: @dotCount </p>
+<div class="slidecontainer">
+    <input type="range" min="5" max="100" step="1" class="slider" style="top:-40px; left:145px;"
+           @bind="dotCount" @bind:event="oninput" @bind:after="LineFits" />
+</div>
+
+<p>
+    좌표 데이터:
+    @(edgePoints is null || edgePoints.Count == 0
+        ? "없음"
+        : string.Join(", ", edgePoints.Select(p => $"({(int)p.X}, {(int)p.Y})")))
+</p>
+
+            @code {
+    private ElementReference srcCanvas;
+    private ElementReference dstCanvas;
+    private CanvasClient? srcCanvasClient;
+    private CanvasClient? dstCanvasClient;
+    private Mat? srcMat;
+    private Mat? dstMat;
+    private int lineCount = 1;
+    private int dotCount = 5;
+    private LineFit? cLineFit;
+    private List<Point2f>? edgePoints;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await base.OnAfterRenderAsync(firstRender);
+
+        var imageBytes = await httpClient.GetByteArrayAsync("images/stadium.jpg");
+        srcMat ??= Mat.FromImageData(imageBytes);
+        dstMat ??= new Mat();
+        srcCanvasClient ??= new CanvasClient(jsRuntime, srcCanvas);
+        dstCanvasClient ??= new CanvasClient(jsRuntime, dstCanvas);
+
+        await srcCanvasClient.DrawMatAsync(srcMat);
+    }
+
+    private async Task LineFits()
+    {
+
+        if (srcMat is null)
+            throw new InvalidOperationException($"{nameof(srcMat)} is null");
+        if (dstMat is null)
+            throw new InvalidOperationException($"{nameof(dstMat)} is null");
+        if (dstCanvasClient is null)
+            throw new InvalidOperationException($"{nameof(dstCanvasClient)} is null");
+
+        srcMat.CopyTo(dstMat);
+        cLineFit ??= new LineFit();
+        using var grayMat = new Mat();
+        Cv2.CvtColor(srcMat, grayMat, ColorConversionCodes.BGR2GRAY);
+
+        Random startX_rand = new Random();
+        Random startY_rand = new Random();
+        Random endX_rand = new Random();
+        Random endY_rand = new Random();
+
+        for (int i = 0; i < lineCount; i++) //랜덤 좌표값 (0~300)
+        {
+            var startX_Val = startX_rand.Next() % 300;
+            var startY_Val = startY_rand.Next() % 300;
+
+            var endX_Val = endX_rand.Next() % 300 + startX_Val;
+            var endY_Val = endX_rand.Next() % 300 + startY_Val;
+
+            endX_Val = Math.Clamp(endX_Val, 0, srcMat.Width - 1); // 좌표 범위 넘어간 순간 min, max로 설정
+            endY_Val = Math.Clamp(endY_Val, 0, srcMat.Height - 1);
+
+            Point2f start = new Point2f(startX_Val, startY_Val);
+            Point2f end = new Point2f(endX_Val, endY_Val);
+
+            edgePoints = new List<Point2f>();
+
+            var edgePoint = cLineFit.FindEdgePoints(
+                grayMat,
+                start,
+                end,
+                dotCount,
+                searchRadius: 10,
+                caliperHalfWidth: 5,
+                minGradient: 8);
+
+            edgePoints.AddRange(edgePoint);
+
+            if (edgePoint.Count < 2) //다시 라인 그리기
+            {
+                i--;
+                Console.WriteLine("라인 피팅에는 최소 2개 이상의 점이 필요합니다.");
+                continue;
+			}
+            var fittedLine = cLineFit.FitLinePca(edgePoint);
+
+            //Cv2.CvtColor(grayMat, dstMat, ColorConversionCodes.GRAY2BGR);
+            foreach (var p in edgePoint)
+            {
+                Cv2.Circle(dstMat, (Point)p, 4, Scalar.Red, -2);
+            }
+
+            var p0 = fittedLine.Point;
+            var dir = fittedLine.Direction;
+
+            float len = Math.Max(dstMat.Width, dstMat.Height);
+            Point pt1 = new Point(
+                (int)(p0.X - dir.X * len),
+                (int)(p0.Y - dir.Y * len));
+
+            Point pt2 = new Point(
+                (int)(p0.X + dir.X * len),
+                (int)(p0.Y + dir.Y * len));
+
+            Cv2.Line(dstMat, pt1, pt2, Scalar.Lime, 2);
+        }
+
+        await dstCanvasClient.DrawMatAsync(dstMat);
+    }
+
+}
